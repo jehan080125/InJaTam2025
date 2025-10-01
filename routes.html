@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>추천 경로</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;900&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="header header--sub">
+    <a class="back" href="index.html" aria-label="메인으로">←</a>
+    <h1>추천 경로</h1>
+  </header>
+
+  <main class="container">
+    <section class="routes">
+      <article class="route">
+        <div class="bar short" aria-hidden="true"></div>
+        <div class="inner">
+          <h4>#짧고 굵게, 핵심 유물만! <span class="muted">30분</span></h4>
+          <p class="muted" style="margin:6px 0 0">핵심 4~6점만 빠르게 둘러보는 초압축 코스입니다.</p>
+          <ol class="ol"><li>입구 포토존</li><li>대표 유물 A</li><li>대표 유물 B</li><li>굿즈/스탬프</li></ol>
+          <div style="margin-top:12px"><button class="btn btn-solid" onclick="openRoute('short')">상세 동선</button></div>
+        </div>
+      </article>
+
+      <article class="route">
+        <div class="bar insta" aria-hidden="true"></div>
+        <div class="inner">
+          <h4>#인스타에 추억을 기록하고 싶다면? <span class="muted">45분</span></h4>
+          <p class="muted" style="margin:6px 0 0">빛과 배경이 좋은 포토 스폿을 연결한 코스입니다.</p>
+          <ol class="ol"><li>네온 라이트 벽면</li><li>대형 설치</li><li>자연광 포치</li><li>루프탑 사인보드</li></ol>
+          <div style="margin-top:12px"><button class="btn btn-solid" onclick="openRoute('insta')">상세 동선</button></div>
+        </div>
+      </article>
+
+      <article class="route">
+        <div class="bar all" aria-hidden="true"></div>
+        <div class="inner">
+          <h4>#모든 유물 관람 <span class="muted">70분</span></h4>
+          <p class="muted" style="margin:6px 0 0">전시 동선을 한 바퀴 도는 표준/완주 코스입니다.</p>
+          <ol class="ol"><li>동선 1관</li><li>동선 2관</li><li>동선 3관</li><li>동선 4관</li></ol>
+          <div style="margin-top:12px"><button class="btn btn-solid" onclick="openRoute('all')">상세 동선</button></div>
+        </div>
+      </article>
+
+      <article class="route">
+        <div class="bar deep" aria-hidden="true"></div>
+        <div class="inner">
+          <h4>#모든 유물 + 설명 정독 <span class="muted">110분</span></h4>
+          <p class="muted" style="margin:6px 0 0">벽라벨/오디오 가이드를 꼼꼼히 따르는 심화 코스입니다.</p>
+          <ol class="ol"><li>오디오 가이드 1</li><li>작가 노트</li><li>큐레이터 포인트</li><li>토론 카드</li></ol>
+          <div style="margin-top:12px"><button class="btn btn-solid" onclick="openRoute('deep')">상세 동선</button></div>
+        </div>
+      </article>
+    </section>
+
+    <div style="margin-top:14px"><a class="btn btn-ghost" href="index.html">메인으로</a></div>
+  </main>
+
+  <!-- 모달 -->
+  <div id="modal">
+    <div id="modal-back" onclick="closeModal()"></div>
+    <div class="modal-card">
+      <div id="modal-bar" class="bar" aria-hidden="true"></div>
+      <div style="padding:16px">
+        <h4 id="modal-title" style="margin:0 0 6px; font-size:18px; font-weight:900">코스 제목</h4>
+        <p class="muted" style="margin:0 0 8px">예시 동선</p>
+        <ol id="modal-steps" class="ol"></ol>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:14px">
+          <button class="btn btn-ghost" onclick="closeModal()">닫기</button>
+          <button class="btn btn-solid" onclick="scrollTopSmooth()">상단으로</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const ROUTES = {
+    short:{title:'#짧고 굵게, 핵심 유물만!', bar:'short', steps:['입구 포토존','대표 유물 A','대표 유물 B','굿즈/스탬프']},
+    insta:{title:'#인스타에 추억을 기록하고 싶다면?', bar:'insta', steps:['네온 라이트 벽면','대형 설치','자연광 포치','루프탑 사인보드']},
+    all:{title:'#모든 유물 관람', bar:'all', steps:['동선 1관','동선 2관','동선 3관','동선 4관']},
+    deep:{title:'#모든 유물 + 설명 정독', bar:'deep', steps:['오디오 가이드 1','작가 노트','큐레이터 포인트','토론 카드']},
+  };
+
+  function openRoute(key){
+    const d=ROUTES[key]; if(!d) return;
+    document.getElementById('modal-title').textContent=d.title;
+    document.getElementById('modal-bar').className='bar '+d.bar;
+    const list=document.getElementById('modal-steps'); list.innerHTML='';
+    d.steps.forEach(s=>{ const li=document.createElement('li'); li.textContent=s; list.appendChild(li); });
+    document.getElementById('modal').style.display='flex';
+  }
+  function closeModal(){ document.getElementById('modal').style.display='none'; }
+  function scrollTopSmooth(){ window.scrollTo({top:0, behavior:'smooth'}); closeModal(); }
+
+  // 해시(#short 등)로 진입 시 자동 오픈
+  window.addEventListener('load', ()=>{
+    const key=location.hash.replace('#','').trim();
+    if(key && ROUTES[key]){ setTimeout(()=>openRoute(key), 100); }
+  });
+</script>
+</body>
+</html>
