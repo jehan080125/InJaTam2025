@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Q&A 기반 추천</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;900&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="header header--sub">
+    <a class="back" href="index.html" aria-label="메인으로">←</a>
+    <h1>Q&A 기반 추천</h1>
+  </header>
+
+  <main class="container">
+    <section class="section" aria-label="질문 입력">
+      <label for="qa-input" class="muted" style="font-size:13px">
+        예: “시간이 30분뿐이에요”, “사진 잘 나오는 곳 위주로”
+      </label>
+      <div style="display:flex; gap:8px; margin-top:10px">
+        <input id="qa-input" class="input" placeholder="질문을 입력하세요" />
+        <button class="btn btn-solid" onclick="qaConfirm()">확인</button>
+      </div>
+    </section>
+
+    <section id="qa-answer" class="section" style="margin-top:12px; display:none; background:#f5f9ff">
+      <p id="qa-answer-text" style="margin:0; font-size:14px; line-height:1.7"></p>
+      <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
+        <a id="qa-link" class="btn btn-solid" href="routes.html">추천 경로 상세 보기</a>
+        <a class="btn btn-ghost" href="index.html">메인으로</a>
+      </div>
+    </section>
+
+    <section class="section" style="margin-top:12px">
+      <div class="chips">
+        <button class="btn btn-ghost" onclick="quickChip('시간이 30분밖에 없어요')">시간 30분</button>
+        <button class="btn btn-ghost" onclick="quickChip('인스타 사진 잘 나오는 스폿 알려주세요')">인스타 스폿</button>
+        <button class="btn btn-ghost" onclick="quickChip('모든 유물을 다 보고 싶어요')">모든 유물</button>
+        <button class="btn btn-ghost" onclick="quickChip('설명을 꼼꼼히 읽고 싶어요')">설명 정독</button>
+      </div>
+    </section>
+
+    <div style="margin-top:14px"><a class="btn btn-ghost" href="index.html">메인으로</a></div>
+  </main>
+
+<script>
+  const ROUTES = {
+    short:{title:'#짧고 굵게, 핵심 유물만!', minutes:30},
+    insta:{title:'#인스타에 추억을 기록하고 싶다면?', minutes:45},
+    all:{title:'#모든 유물 관람', minutes:70},
+    deep:{title:'#모든 유물 + 설명 정독', minutes:110},
+  };
+  let lastSuggestKey=null;
+
+  function inferSuggestion(text){
+    if(!text) return 'short';
+    const t=String(text).toLowerCase();
+    if (/(^|\D)(20|25|30)(\D|$)|짧|급|바빠|시간\s*없/.test(t)) return 'short';
+    if (/인스타|사진|포토|기록|sns/.test(t)) return 'insta';
+    if (/정독|깊게|오디오|설명|공부|연구/.test(t)) return 'deep';
+    if (/모든|전체|완주|전부/.test(t)) return 'all';
+    if (/(40|45|50)/.test(t)) return 'insta';
+    if (/(60|70|80)/.test(t)) return 'all';
+    if (/(100|110|120)/.test(t)) return 'deep';
+    return 'short';
+  }
+
+  function qaConfirm(){
+    const input=document.getElementById('qa-input');
+    const key=inferSuggestion(input.value);
+    lastSuggestKey=key;
+    const r=ROUTES[key];
+    const txt = `질문 주신 내용은 확인했습니다. 말씀하신 조건에는 “${r.title}” 코스가 적합해 보입니다. (예상 ${r.minutes}분)`;
+    document.getElementById('qa-answer-text').textContent=txt;
+    document.getElementById('qa-answer').style.display='block';
+    document.getElementById('qa-link').href = 'routes.html#'+key;
+  }
+
+  function quickChip(text){
+    document.getElementById('qa-input').value=text;
+    qaConfirm();
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,199 @@
+/* ========== Global ========== */
+:root{
+  --bg:#ffffff; --ink:#111111; --muted:#555; --line:#e5e7eb;
+  --header-h:64px; --gap:14px; --pad:18px;
+  --c1:#2563eb; --c2:#0ea5e9; --c3:#10b981; --c4:#f59e0b; --c5:#ef4444;
+}
+
+*{ box-sizing:border-box; }
+html,body{ height:100%; }
+body{
+  margin:0;
+  font-family: "Noto Sans KR", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, sans-serif;
+  background:var(--bg); color:var(--ink);
+}
+
+/* ========== Header ========== */
+.header{
+  position:sticky; top:0; z-index:10; height:var(--header-h);
+  display:flex; align-items:center; gap:12px; padding:0 var(--pad);
+  background:#fff; border-bottom:1px solid var(--line);
+}
+.header h1{ margin:0; font-size:20px; font-weight:900; letter-spacing:-.2px; }
+.header--sub h1{ font-size:18px; }
+
+.back{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:40px; height:40px; border-radius:10px; border:1px solid var(--line);
+  background:#fff; color:var(--ink); font-weight:900; text-decoration:none;
+}
+
+/* ========== Layout ========== */
+main{ padding:var(--gap) var(--pad); }
+.container{ max-width:860px; margin:0 auto; }
+
+/* 메인 2×2 그리드 */
+.grid-2x2{
+  height:calc(100dvh - var(--header-h) - var(--gap)*2);
+  display:grid; gap:var(--gap);
+  grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr;
+}
+
+/* ========== Tiles (카드) ========== */
+.tile{
+  display:flex; flex-direction:column; justify-content:flex-start; align-items:stretch;
+  border:1px solid var(--line); border-radius:16px; padding:14px 14px 16px;
+  background:#fff; /* 기본은 흰색, 아래 t1~t4에서 카드별 틴트로 덮어씀 */
+  color:var(--ink); text-decoration:none; cursor:pointer;
+  transition:transform .12s ease, box-shadow .12s ease, background .2s ease;
+  /* 초기 애니메이션 상태 */
+  opacity:0; transform:translateY(12px) scale(.98);
+}
+.tile:active{ transform:scale(.99); }
+.tile:hover{ transform:translateY(-2px); box-shadow:0 6px 18px rgba(0,0,0,.08); }
+
+/* 카드별 전체 배경 틴트(연한 고유색) */
+.tile.t1{ background:linear-gradient(0deg, #f8fafc, #ffffff); }   /* 뉴트럴 */
+.tile.t2{ background:linear-gradient(0deg, #f0f9ff, #ffffff); }   /* 블루 라이트 */
+.tile.t3{ background:linear-gradient(0deg, #f0fdf4, #ffffff); }   /* 그린 라이트 */
+.tile.t4{ background:linear-gradient(0deg, #fff7ed, #ffffff); }   /* 오렌지 라이트 */
+
+.tile__title{
+  margin:2px 0 10px;
+  font-size:18px; font-weight:900; letter-spacing:-.2px;
+}
+.tile__desc{
+  margin:10px 0 0; font-size:14px; color:var(--muted); line-height:1.55;
+}
+
+/* 사진/비주얼 블록 */
+.thumb{
+  width:100%;
+  border-radius:12px;
+  overflow:hidden;
+  border:1px solid var(--line);
+  background:#f3f4f6 center/cover no-repeat;
+  margin:0; /* 제목 바로 아래 붙도록 */
+}
+
+/* 실제 사진을 쓰는 경우 */
+.thumb--photo{
+  aspect-ratio: 16/9;              /* 반응형 비율 유지 */
+  filter: saturate(.92) brightness(.98);
+}
+
+/* 사진 없는 카드의 소프트 비주얼(아래의 t2-soft/t3-soft/t4-soft로 덮어씀) */
+.thumb--soft{
+  aspect-ratio: 16/9;
+  background-image: linear-gradient(180deg,#fafafa,#f7f7f7);
+}
+
+/* 카드별 고유 색상 비주얼 블록(사진 대신 사용할 때) */
+.t2-soft{ background-image: linear-gradient(180deg,#3b82f6,#0ea5e9); } /* 파랑~하늘 */
+.t3-soft{ background-image: linear-gradient(180deg,#10b981,#84cc16); } /* 초록~연두 */
+.t4-soft{ background-image: linear-gradient(180deg,#f59e0b,#ef4444); } /* 주황~빨강 */
+
+/* 메인 진입 애니메이션 */
+@keyframes riseIn {
+  0%{opacity:0; transform:translateY(16px) scale(.96)}
+  60%{opacity:1; transform:translateY(0) scale(1.01)}
+  100%{opacity:1; transform:translateY(0) scale(1)}
+}
+.enter .tile{
+  animation: riseIn .58s cubic-bezier(.2,.8,.2,1) both;
+  animation-delay: calc(var(--i) * 120ms);
+}
+@media (prefers-reduced-motion: reduce){
+  .tile{ opacity:1 !important; transform:none !important; animation:none !important; }
+  .enter .tile{ animation:none !important; }
+}
+
+/* ========== Sections / Buttons / Forms (서브 페이지 공용) ========== */
+.section{
+  background:#f9fafb; border:1px solid var(--line);
+  border-radius:16px; padding:16px;
+}
+.muted{ color:var(--muted); }
+.ol{ margin:10px 0 0; padding-left:18px; font-size:14px; }
+
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  border-radius:12px; padding:12px 14px; font-weight:900; cursor:pointer;
+  text-decoration:none;
+}
+.btn-solid{ background:#111; color:#fff; border:0; }
+.btn-ghost{ background:#fff; color:var(--ink); border:1px solid var(--line); }
+
+.input{
+  flex:1; padding:12px 14px; border-radius:12px;
+  border:1px solid var(--line); background:#fff; color:var(--ink);
+  font-size:14px; outline:none;
+}
+.chips{ display:flex; flex-wrap:wrap; gap:8px; }
+
+/* ========== Routes / Modal (routes.html) ========== */
+.routes{ display:grid; gap:12px; }
+.route{ border:1px solid var(--line); border-radius:16px; overflow:hidden; background:#fafafa; }
+.bar{ height:8px; }
+.bar.short{ background:linear-gradient(90deg,var(--c5),var(--c4)); }
+.bar.insta{ background:linear-gradient(90deg,var(--c1),var(--c2)); }
+.bar.all{ background:linear-gradient(90deg,var(--c1),var(--c2)); }
+.bar.deep{ background:linear-gradient(90deg,var(--c3),#84cc16); }
+.inner{ padding:16px; }
+.inner h4{ margin:0; font-size:16px; display:flex; justify-content:space-between; align-items:center; }
+
+/* 모달 */
+#modal{
+  position:fixed; inset:0; z-index:50; display:none;
+  align-items:flex-end; justify-content:center; padding:16px;
+}
+#modal-back{ position:absolute; inset:0; background:rgba(0,0,0,.35); }
+.modal-card{
+  width:100%; max-width:420px; border:1px solid var(--line);
+  border-radius:16px; overflow:hidden; background:#fff; position:relative; z-index:1;
+}
+
+/* ========== Intro Hero (intro.html) ========== */
+.hero{
+  border:1px solid var(--line);
+  border-radius:16px;
+  overflow:hidden;
+  background:#f3f4f6;
+}
+.hero__img{
+  width:100%;
+  aspect-ratio:16/9;
+  background:#ddd center/cover no-repeat;
+}
+.hero__caption{
+  padding:10px 12px;
+  font-size:13px;
+  color:var(--muted);
+  background:#fff;
+  border-top:1px solid var(--line);
+}
+.kicker{
+  margin:0 0 6px;
+  font-size:13px;
+  color:var(--muted);
+  letter-spacing:.02em;
+  font-weight:700;
+  text-transform:uppercase;
+}
+.lead{
+  margin:8px 0 0;
+  line-height:1.8;
+  font-size:15px;
+}
+.badges{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+.badge{
+  display:inline-flex; align-items:center; gap:6px;
+  height:28px; padding:0 10px; border-radius:999px;
+  border:1px solid var(--line); background:#fff; color:#333; font-size:12px; font-weight:700;
+}
+
+/* ========== Media ========== */
+@media (max-width:360px){
+  .tile__title{ font-size:16px; }
+  .tile__desc{ font-size:13px; }
+}
