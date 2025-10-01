@@ -35,7 +35,7 @@ main{padding:var(--gap) var(--pad)}
   grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr;
   justify-items:center;          /* 시각적 중앙 정렬 보정 */
   margin-bottom:calc(var(--gap)*2);
-  margin-bottom: 304px;
+  margin-bottom: 40px;
 }
 
 /* ========== Tiles ========== */
@@ -237,4 +237,5 @@ main{padding:var(--gap) var(--pad)}
 /* 입력창/버튼 초점 윤곽선 통일 제거 */
 .btn:focus, .btn:focus-visible{
   outline:none !important; box-shadow: 0 0 0 3px rgba(37,99,235,.12);
+
 }
