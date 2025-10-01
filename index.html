@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>모바일 박물관 가이드 — 메인</title>
+
+<!-- Google Fonts: Noto Sans KR -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;900&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="header">
+      <a href="index.html" class="logo-link">
+      <img src="assets/logo.png" alt="박물관 로고" class="logo-img">
+    </a>
+  </header>
+
+  <main class="container" id="main">
+    <section class="grid-2x2" aria-label="메인 선택">
+      <a class="tile t1" href="intro.html" style="--i:0" tabindex="0">
+        <h3 class="tile__title">국립 부여 박물관</h3>
+        <p class="tile__desc">국립 부여 박물관의 전시 개요, 중요 유물, 관람 안내</p>
+      </a>
+
+      <a class="tile t2" href="qa.html" style="--i:1" tabindex="0">
+        <h3 class="tile__title">맞춤형 관람 코스</h3>
+        <p class="tile__desc">AI 기반 시간 / 관심사에 맞는 맞춤형 관람 코스 제안</p>
+      </a>
+
+      <a class="tile t3" href="routes.html" style="--i:2" tabindex="0">
+        <h3 class="tile__title">추천 관람 코스</h3>
+        <p class="tile__desc">#짧고굵게 #인스타명소 #하나도빠짐없이</p>
+      </a>
+
+      <a class="tile t4" href="etc.html" style="--i:3" tabindex="0">
+        <h3 class="tile__title">OTHERS</h3>
+        <p class="tile__desc">이 프로젝트는 어떻게 수행되었나?</p>
+      </a>
+    </section>
+  </main>
+
+<script>
+(function () {
+  // 이전 페이지 복귀 등에서 브라우저가 스크롤을 복원하지 않도록
+  if ('scrollRestoration' in history) {
+    history.scrollRestoration = 'manual';
+  }
+
+  const toTop = () => window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+
+  // DOM 준비되면 즉시 최상단으로 이동 → 다음 프레임에 애니메이션 시작
+  window.addEventListener('DOMContentLoaded', () => {
+    toTop();
+
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!reduce) {
+      // 다음 프레임에 enter 클래스를 붙여 애니메이션 트리거
+      requestAnimationFrame(() => {
+        document.body.classList.add('enter');
+      });
+    }
+  });
+
+  // bfcache(뒤로가기 등)로 복귀했을 때도 최상단으로 보정
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) toTop();
+  });
+
+  // 애니메이션 총 소요 시간 계산 후 한 번 더 최상단으로 보정
+  // (폰트 로딩·레이아웃 시프트로 미세하게 밀리는 경우를 대비)
+  window.addEventListener('load', () => {
+    const DUR = 900;                  // --enter-dur와 동일 (ms)
+    const STEP = 160;                 // --enter-delay-step와 동일 (ms)
+    const count = document.querySelectorAll('.tile').length || 4;
+    const BUFFER = 150;               // 약간의 여유 버퍼
+    const total = DUR + STEP * (count - 1) + BUFFER;
+
+    setTimeout(toTop, total);
+  });
+})();
+</script>
+</body>
+</html>
