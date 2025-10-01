@@ -44,7 +44,7 @@ main{padding:var(--gap) var(--pad)}
   color:#fff; text-align:center; text-shadow:0 1px 0 rgba(0,0,0,.08),0 0 24px rgba(0,0,0,.08);
   border:1px solid rgba(255,255,255,.25); box-shadow:inset 0 0 0 1px rgba(255,255,255,.18);
   text-decoration:none; cursor:pointer; transition:transform .18s, box-shadow .18s, filter .18s;
-  opacity:0; transform:translateY(var(--enter-translate)) scale(.96);
+  opacity:0; transform:translateY(var(--enter-translate)) scale(.96); 
 }
 .tile:hover{transform:translateY(-4px) scale(1.01); box-shadow:0 14px 28px rgba(0,0,0,.15), inset 0 0 0 1px rgba(255,255,255,.18); filter:saturate(1.05)}
 .tile:active{transform:translateY(-1px) scale(1.005)}
@@ -152,6 +152,7 @@ main{padding:var(--gap) var(--pad)}
     grid-auto-rows: auto;
     justify-items: center;   /* 카드 가로 중앙 */
     width: 100%;
+    /*margin-bottom: 24px;*/
   }
 
   /* 핵심 수정: vw 대신 컨테이너 기준 % 사용 */
@@ -168,6 +169,11 @@ main{padding:var(--gap) var(--pad)}
     display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden;
     max-width: 26ch;
   }
+
+  .tile.t4 {
+    margin-bottom: 24px; /* others 카드 아래 공간 */
+  }
+  
 }
 
 @media (max-width:360px){
