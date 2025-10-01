@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>AI 대화 — 맞춤 경로</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;900&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="style.css" />
+<style>
+  /* ===== 페이지 전용 보강 (기존 톤 유지) ===== */
+  .chat-page{ padding-bottom: env(safe-area-inset-bottom); }
+  .chat-wrap{
+    display:flex; flex-direction:column; gap:12px;
+    /* 헤더 제외하고 화면 꽉 채우기 */
+    min-height: calc(100dvh - var(--header-h) - var(--gap)*2);
+  }
+  .chat {
+    border:1px solid var(--line); border-radius:16px; background:#fff;
+    padding:12px; overflow:auto; flex:1 1 auto;
+    /* iOS 탄력 스크롤 */
+    -webkit-overflow-scrolling: touch;
+    /* 입력창과 겹치지 않도록 바닥 여유 */
+    scroll-padding-bottom: 80px;
+  }
+  .msg{ display:flex; gap:10px; margin:10px 0; }
+  .msg .bubble{
+    max-width: 78%; padding:10px 12px; border-radius:14px; line-height:1.6; font-size:15px;
+    border:1px solid var(--line);
+    word-break: break-word; white-space: pre-wrap; background:#f9fafb;
+  }
+  .msg.user{ justify-content:flex-end; }
+  .msg.user .bubble{ background:#f5f9ff; }
+
+  /* 하단 입력창 - 화면 하단에 고정 */
+  .composer-wrap{
+    position: sticky; bottom: 0; left: 0; right: 0;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 4px);
+    background: linear-gradient(to top, #ffffff 70%, rgba(255,255,255,0));
+  }
+  .composer{
+    display:flex; gap:8px; align-items:center;
+    background:#fff; padding:10px; border:1px solid var(--line); border-radius:12px;
+  }
+  .composer .input{ height:44px; }
+  .typing{ font-size:13px; color:var(--muted); margin-top:-6px; padding-left:4px; display:none; }
+
+  /* 마크다운 하이라이트 스타일 */
+  .bubble strong{ font-weight:900; }
+  .bubble em{ font-style:italic; }
+  .bubble code{
+    font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size: 0.92em; padding: 0.1em 0.35em; border-radius: 6px;
+    background: #f3f4f6; border: 1px solid var(--line);
+  }
+  .bubble a{ color:#2563eb; text-decoration:underline; word-break:break-all; }
+  .bubble ul{ padding-left: 1.2em; margin: .4em 0; }
+  .bubble li{ margin: .25em 0; }
+
+  /* 포커스 가시성 */
+  .input:focus-visible{ outline: 2px solid #c7d2fe; outline-offset: 2px; }
+
+  /* 모바일 미세 최적화 */
+  @media (max-width:480px){
+    .msg .bubble{ max-width: 85%; }
+  }
+</style>
+</head>
+<body>
+  <header class="header header--sub">
+    <a class="back" href="qa.html" aria-label="뒤로">←</a>
+    <h1>AI와 대화하기</h1>
+  </header>
+
+  <main class="container chat-page">
+    <section class="chat-wrap">
+      <!-- 채팅 영역 -->
+      <div class="chat" id="chat" aria-live="polite">
+        <div class="msg bot">
+          <div class="bubble">안녕하세요. 관람 시간과 관심사에 맞춰 **맞춤 동선**을 제안해 드리겠습니다.
+
+예시)<br>
+    * 시간 30분뿐이에요<br>
+    * 사진 잘 나오는 곳 위주로 보고 싶어요<br>
+    * 모든 유물 + 설명 정독하고 싶어요</div>
+        </div>
+      </div>
+
+      <div class="typing" id="typing">AI가 답변을 작성 중입니다…</div>
+
+      <!-- 하단 입력 영역 -->
+        <div class="composer-wrap">
+            <div class="composer">
+                <input id="userInput" class="input" placeholder="메시지를 입력하세요 (Enter 전송, Shift+Enter 줄바꿈)" />
+                <button class="btn" id="summarizeBtn" aria-label="대화 요약 및 경로 추천">대화 요약 및 경로 추천</button>
+                <button class="btn btn-solid" id="sendBtn" aria-label="전송">전송</button>
+            </div>
+        </div>
+
+
+    </section>
+  </main>
+
+<script>
+/** ====== 설정 ====== */
+const MODEL_NAME = "gemini-2.5-flash";
+const API_KEY = "AIzaSyA5-ytyoOqnZ7OiO9nwp9Lmj3am3isvl4I"; // 주인님이 지정한 키
+const ENDPOINT = (model) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`;
+
+/** ====== DOM ====== */
+const chatEl = document.getElementById('chat');
+const inputEl = document.getElementById('userInput');
+const sendBtn = document.getElementById('sendBtn');
+const typingEl = document.getElementById('typing');
+
+/** ====== 상태 ====== */
+let historyMsgs = [];
+
+/** ====== 렌더러: 안전 이스케이프 → 마크다운풍 변환 ====== */
+function escapeHtml(s){
+  return s
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// - 또는 * 로 시작하는 연속 줄을 <ul><li>...</li></ul>로 변환
+function renderLists(s){
+  const lines = s.split('\n');
+  let out = [], buf = [];
+  const bulletRe = /^\s*([*-])\s+/; // 하이픈(-) 또는 별표(*) 지원
+
+  const flush = () => {
+    if (buf.length){
+      out.push('<ul>' + buf.map(li => {
+        return '<li>' + li.replace(bulletRe, '') + '</li>';
+      }).join('') + '</ul>');
+      buf = [];
+    }
+  };
+
+  for (let line of lines){
+    if (bulletRe.test(line)){
+      buf.push(line.trim());
+    }else{
+      flush();
+      out.push(line);
+    }
+  }
+  flush();
+  return out.join('\n');
+}
+
+function renderRich(raw){
+  let s = escapeHtml(String(raw||''));
+
+  // [텍스트](url)
+  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    (_,text,url)=>`<a href="${url}" target="_blank" rel="noopener">${text}</a>`);
+
+  // 자동 링크
+  s = s.replace(/(https?:\/\/[^\s)]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+
+  // 인라인 코드 `code`
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // **볼드**
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+  // 리스트 → HTML
+  s = renderLists(s);
+
+  // 리스트 변환 이후 단독 *이탤릭* 처리 (마커와 충돌 방지)
+  s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+
+  // 줄바꿈
+  s = s.replace(/\n/g,'<br>');
+  return s;
+}
+
+/** ====== 메시지 출력 ====== */
+// 기존 appendMsg를 이걸로 교체
+function appendMsg(role, text){
+  const wrap = document.createElement('div');
+  wrap.className = 'msg ' + (role === 'user' ? 'user' : 'bot');
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.innerHTML = renderRich(text);
+  wrap.appendChild(bubble);
+  chatEl.appendChild(wrap);
+
+  // 최신 메시지가 항상 보이도록 (모바일 키보드 고려)
+  // 레이아웃이 안정된 다음 스크롤
+  requestAnimationFrame(() => {
+    wrap.scrollIntoView({ behavior: "smooth", block: "end" });
+  });
+}
+function setTyping(on){ typingEl.style.display = on ? 'block' : 'none'; }
+function uiLock(on){ inputEl.disabled = on; sendBtn.disabled = on; }
+
+/** ====== Gemini 호출 ====== */
+async function callGemini(userText){
+  const N = 6; // 최근 6개 메시지(맥락)
+  const recent = historyMsgs.slice(-N);
+  const contents = [];
+  for (const m of recent){
+    contents.push({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.text }] });
+  }
+  contents.push({ role: 'user', parts: [{ text: userText }] });
+
+  const body = {
+    contents,
+    generationConfig: { temperature:0.7, topK:40, topP:0.95, maxOutputTokens:512 }
+  };
+
+  const res = await fetch(ENDPOINT(MODEL_NAME), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if(!res.ok){
+    const t = await res.text();
+    throw new Error('API 오류: ' + t);
+  }
+  const data = await res.json();
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text || '응답이 비어있습니다.';
+}
+
+/** ====== 전송 핸들러 ====== */
+async function send(){
+  const text = inputEl.value.trim();
+  if(!text) return;
+
+  appendMsg('user', text);
+  historyMsgs.push({ role:'user', text });
+  inputEl.value = '';
+
+  uiLock(true); setTyping(true);
+
+  try{
+    const reply = await callGemini(text);
+    appendMsg('model', reply);
+    historyMsgs.push({ role:'model', text: reply });
+  }catch(err){
+    appendMsg('model', '죄송합니다. 처리 중 문제가 발생했습니다.\n' + (err?.message||err));
+  }finally{
+    setTyping(false); uiLock(false);
+    inputEl.focus();
+  }
+}
+sendBtn.addEventListener('click', send);
+inputEl.addEventListener('keydown', e=>{
+  if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); }
+});
+
+inputEl.addEventListener('focus', () => {
+  // 모바일 키보드가 올라오며 뷰포트가 줄어드는 타이밍을 고려해 약간 지연
+  setTimeout(() => {
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }, 300);
+});
+/* iOS에서 입력 포커스 시 화면 튀는 현상 완화 */
+window.addEventListener('resize', () => {
+  // 키보드가 올라오면 최신 메시지로 스크롤
+  chatEl.scrollTop = chatEl.scrollHeight;
+});
+
+window.addEventListener('DOMContentLoaded', ()=> {
+  inputEl.focus({ preventScroll: true });
+});
+</script>
+</body>
+</html>
