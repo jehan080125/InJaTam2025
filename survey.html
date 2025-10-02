@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>설문 기반 경로 추천 — node_types 전용</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;900&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="style.css" />
+<style>
+  :root{ --line:#e5e7eb; --muted:#6b7280; }
+  body{ font-family:"Noto Sans KR", system-ui, -apple-system, sans-serif; }
+  .survey-wrap{ display:flex; flex-direction:column; gap:12px; }
+  .section h3{ margin:0 0 8px; font-size:18px; font-weight:900; }
+  .row{ display:flex; gap:8px; flex-wrap:wrap; }
+  .help{ font-size:12px; color:var(--muted); margin-top:6px; }
+  .pill{ display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; background:#f3f4f6; border:1px solid var(--line); font-size:13px; }
+  .input{ padding:8px 10px; border:1px solid var(--line); border-radius:10px; min-width:0; }
+  .btn{ padding:10px 14px; border:1px solid var(--line); border-radius:10px; background:#fff; cursor:pointer; }
+  .btn-ghost{ background:#fff; }
+  .btn-primary{ background:#111; color:#fff; border:0; }
+
+  /* 관심 유물 선택 UI */
+  .chooser{ position:relative; }
+  .chooser .input{ width:min(640px, 100%); }
+  .suggest{ position:absolute; top:calc(100% + 6px); left:0; right:0; z-index:20; border:1px solid var(--line); border-radius:12px; background:#fff; max-height:260px; overflow:auto; box-shadow:0 10px 30px rgba(0,0,0,.06); }
+  .s-item{ padding:10px 12px; cursor:pointer; outline:none; }
+  .s-item:hover, .s-item:focus{ background:#f3f4f6; }
+  .chips{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .chip{ display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; border:1px solid var(--line); background:#fff; }
+  .chip b{ font-weight:900; }
+  .chip button{ border:0; background:transparent; cursor:pointer; font-size:14px; }
+
+  /* 목록 프리뷰(선택 보조) */
+  .list{ border:1px solid var(--line); border-radius:12px; padding:6px; background:#fff; max-height:220px; overflow:auto; }
+  .list-item{ padding:8px 10px; border-radius:8px; cursor:pointer; outline:none; }
+  .list-item:hover, .list-item:focus{ background:#f3f4f6; }
+
+  /* 결과 */
+  .result{ border:1px solid var(--line); border-radius:16px; padding:14px; background:#fff; }
+  .result h4{ margin:0 0 8px; font-size:16px; }
+  .route-vis{ display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-top:8px; }
+  .node-dot{ width:36px; height:36px; border-radius:999px; background:#111; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:900; cursor:pointer; }
+  .dash{ flex: 0 0 28px; height:2px; background:linear-gradient(90deg,#ddd 50%, transparent 0) repeat-x; background-size:6px 2px; }
+  .node-label{ font-size:12px; text-align:center; color:#333; margin-top:2px; }
+  .grid-two{ display:grid; gap:8px; grid-template-columns: 1fr 1fr; }
+  @media (max-width:640px){ .grid-two{ grid-template-columns:1fr; } }
+
+  .hidden{ display:none !important; }
+  .file-fallback{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+  <header class="header header--sub">
+    <a class="back" href="qa.html" aria-label="뒤로">←</a>
+    <h1>설문 기반 경로 추천</h1>
+  </header>
+
+  <main class="container">
+    <section class="survey-wrap">
+
+      <!-- 관람 스타일 -->
+      <section class="section">
+        <h3>관람 스타일</h3>
+        <div class="row">
+          <label class="pill"><input type="radio" name="style" value="0.5" checked> 유물만 본다 (0.5분/노드)</label>
+          <label class="pill"><input type="radio" name="style" value="1.5"> 설명을 조금씩 (1.5분/노드)</label>
+          <label class="pill"><input type="radio" name="style" value="3"> 설명 꼼꼼히 (3분/노드)</label>
+        </div>
+      </section>
+
+      <!-- 목표 노드 수 (최소~최대) -->
+      <section class="section">
+        <h3>목표 노드 수 (최소 ~ 최대)</h3>
+        <div class="row">
+          <input id="minNodes" class="input" type="number" min="1" value="4" style="max-width:120px" />
+          <span style="align-self:center">~</span>
+          <input id="maxNodes" class="input" type="number" min="1" value="8" style="max-width:120px" />
+        </div>
+        <div class="help">같은 노드에 여러 유물이 있을 수 있으므로, “방문 대상 노드 개수”의 범위를 지정합니다. 출발/도착 P1은 자동 포함됩니다.</div>
+      </section>
+
+      <!-- 관심 유물 자동완성 + 선택 (node_types.csv 기반) -->
+      <section class="section">
+        <h3>관심 있는 유물 선택</h3>
+        <div class="chooser">
+          <input id="interestInput" class="input" placeholder="유물명/키워드 1~2글자 이상 입력 → 자동완성에서 선택" autocomplete="off" />
+          <div id="suggestBox" class="suggest hidden" role="listbox" aria-label="유물 자동완성 목록"></div>
+        </div>
+        <div class="help">Enter/Space로도 선택 가능. 선택한 유물과 <b>유사한 이름</b>의 유물을 보유한 노드가 우선 선택됩니다. (artifacts.csv <u>미사용</u>)</div>
+        <div id="chips" class="chips" aria-live="polite"></div>
+
+        <div style="margin-top:8px">
+          <div class="list" id="artifactList">
+            <div class="muted"><small>유물 목록을 불러오는 중… (로컬로 여셨다면 아래에서 CSV 2개를 직접 선택하세요)</small></div>
+          </div>
+          <!-- fetch 실패 시 파일 업로드 대체 -->
+          <div id="fileFallback" class="file-fallback hidden" style="margin-top:8px">
+            <label>node_types.csv <input type="file" id="fileN" accept=".csv"></label>
+            <label>distances.csv <input type="file" id="fileD" accept=".csv"></label>
+            <button class="btn btn-ghost" id="loadFilesBtn">불러오기</button>
+          </div>
+          <div class="help">프리뷰 목록을 클릭해도 위에 선택으로 올라갑니다. (node_types의 2열: 쉼표로 구분된 유물명)</div>
+        </div>
+      </section>
+
+      <!-- 실행 -->
+      <div class="row" style="justify-content:flex-end">
+        <button class="btn btn-primary" id="runBtn">완료(경로 추천)</button>
+        <a class="btn btn-ghost" href="index.html">메인으로</a>
+      </div>
+
+      <!-- 결과 -->
+      <section class="result" id="resultBox" style="display:none">
+        <h4>추천 결과</h4>
+        <div id="summaryText" class="muted"></div>
+
+        <div style="margin-top:10px">
+          <strong>포함된 유물:</strong>
+          <ul id="pickedList" class="ol" style="margin-top:6px"></ul>
+        </div>
+
+        <div style="margin-top:10px">
+          <strong>이동 경로:</strong>
+          <div class="route-vis" id="routeVis"></div>
+          <div class="help" id="routeStats" style="margin-top:6px"></div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+<script>
+/* ================= 공통 CSV 파서 ================= */
+function splitCsvLine(line){
+  const out=[]; let cur='', inQ=false;
+  for (let i=0;i<line.length;i++){
+    const ch=line[i];
+    if (ch === '"'){
+      if (inQ && line[i+1] === '"'){ cur+='"'; i++; }
+      else inQ = !inQ;
+    }else if (ch === ',' && !inQ){
+      out.push(cur); cur='';
+    }else{ cur+=ch; }
+  }
+  out.push(cur);
+  return out;
+}
+function parseCsv(text){
+  const lines = text.split(/\r?\n/).filter(l=>l.trim().length>0);
+  if(!lines.length) return {headers:[], rows:[]};
+  const headers = splitCsvLine(lines[0]).map(h=>h.trim());
+  const rows = [];
+  for(let i=1;i<lines.length;i++){
+    const cols = splitCsvLine(lines[i]);
+    const o={};
+    headers.forEach((h,idx)=> o[h]= (cols[idx]??'').trim());
+    rows.push(o);
+  }
+  return { headers, rows };
+}
+async function tryFetchCsv(path){
+  const res = await fetch(path);
+  if(!res.ok) throw new Error(path+' 응답 실패');
+  return await res.text();
+}
+function readFileAsText(file){
+  return new Promise((resolve,reject)=>{
+    const fr = new FileReader();
+    fr.onload = ()=> resolve(fr.result);
+    fr.onerror = ()=> reject(fr.error||new Error('읽기 실패'));
+    fr.readAsText(file, 'utf-8');
+  });
+}
+
+/* ================= 데이터/키( node_types 전용 ) ================= */
+let NODE_ROWS=[], EDGE_ROWS=[];            // 원본 rows
+let NODE_TO_ARTS=new Map();                // nodeName -> [artifact,...]
+let ART_TO_NODES=new Map();                // normalizedArtifact -> Set(nodes)
+let ALL_ARTIFACTS=[];                      // {name, norm, nodes:Set}
+let GRAPH=new Map();                       // 인접 리스트
+
+const speed_mps = 1.3;
+
+function normStr(s){ return (s||'').toLowerCase().replace(/[\s\u200b\-_.]/g,'').trim(); }
+function uniq(arr){ return [...new Set(arr)]; }
+
+function pickKey(obj, keys){ return keys.find(k=>k in obj); }
+function getVal(obj, keys){ const k = pickKey(obj, keys)||keys[0]; return (obj[k]||'').trim(); }
+function getValNum(obj, keys){ const v = parseFloat(getVal(obj, keys).replace(/,/g,'')); return isFinite(v)? v : NaN; }
+
+// node_types 예상 키: 1열 node, 2열 artifacts(쉼표 구분)
+const K_NODE_ID   = ['node','node_id','id','노드','name'];
+const K_NODE_ARTS = ['artifacts','contains','유물들','유물목록','유물','포함'];
+
+// distances 예상 키
+const K_EDGE_FROM = ['from','source','src','시작'];
+const K_EDGE_TO   = ['to','target','dst','끝'];
+const K_EDGE_DIST = ['distance','dist','weight','길이','거리'];
+
+/* ================= DOM ================= */
+const suggestBox = document.getElementById('suggestBox');
+const interestInputEl = document.getElementById('interestInput');
+const chipsEl   = document.getElementById('chips');
+const artifactListEl = document.getElementById('artifactList');
+const fileFallback = document.getElementById('fileFallback');
+const fileN = document.getElementById('fileN');
+const fileD = document.getElementById('fileD');
+const loadStatusEl = document.getElementById('loadStatus');
+
+function updateLoadStatus(source){
+  const nodeCount = NODE_TO_ARTS.size;
+  const artCount  = ALL_ARTIFACTS.length;
+  let edgePairs = 0; for(const [k,arr] of GRAPH) edgePairs += (arr?.length||0);
+  const edgeCount = Math.round(edgePairs/2);
+  const ok = nodeCount>0 && artCount>0;
+  const now = new Date();
+  const msg = ok ? `✅ 로드 완료(${source}) — 노드 ${nodeCount} · 유물 ${artCount} · 간선 ${edgeCount} · ${now.toLocaleTimeString()}`
+                 : `⚠️ 로드 실패/미완(${source}) — 노드 ${nodeCount} · 유물 ${artCount} · 간선 ${edgeCount}`;
+  if(loadStatusEl){ loadStatusEl.innerHTML = msg; loadStatusEl.style.color = ok? '#065f46' : '#b91c1c'; }
+  console.log('[로드상태]', {source,nodeCount,artCount,edgeCount});
+}
+
+
+/* ================= 관심 유물(선택 결과) ================= */
+const pickedArtifacts = new Map(); // name(norm key 아님) -> {name}
+function renderChips(){
+  chipsEl.innerHTML='';
+  for(const [name,_] of pickedArtifacts){
+    const chip = document.createElement('span');
+    chip.className='chip';
+    chip.innerHTML = `<b>${name}</b><button aria-label="삭제" title="삭제">×</button>`;
+    chip.querySelector('button').onclick = ()=>{ pickedArtifacts.delete(name); renderChips(); };
+    chipsEl.appendChild(chip);
+  }
+}
+
+/* ================= 유사도/검색 ================= */
+function levenshtein(a,b){
+  a=normStr(a); b=normStr(b);
+  const n=a.length, m=b.length; if(!n) return m; if(!m) return n;
+  const dp=new Array(m+1);
+  for(let j=0;j<=m;j++) dp[j]=j;
+  for(let i=1;i<=n;i++){
+    let prev=dp[0]; dp[0]=i;
+    for(let j=1;j<=m;j++){
+      const temp=dp[j];
+      const cost=(a[i-1]===b[j-1])?0:1;
+      dp[j] = Math.min(
+        dp[j]+1,         // deletion
+        dp[j-1]+1,       // insertion
+        prev+cost        // substitution
+      );
+      prev=temp;
+    }
+  }
+  return dp[m];
+}
+function simScore(a,b){
+  const A=normStr(a), B=normStr(b);
+  if(!A||!B) return 0;
+  if(A.includes(B)) return Math.min(1, (B.length/Math.max(1,A.length)) + 0.35); // 부분일치 가산
+  if(B.includes(A)) return Math.min(1, (A.length/Math.max(1,B.length)) + 0.35);
+  const d = levenshtein(A,B);
+  return 1 - d/Math.max(A.length,B.length);
+}
+function tokenize(q){ return q.toLowerCase().split(/[\s,]+/).filter(Boolean); }
+
+function searchArtifacts(q, limit=12){
+  const tokens = tokenize(q);
+  if(!tokens.length) return [];
+  const items = ALL_ARTIFACTS.map(a=>{
+    let s=0;
+    for(const t of tokens){ s += Math.max(0, simScore(a.name, t)); }
+    return { name:a.name, nodes:a.nodes, sc:s };
+  }).filter(x=>x.sc>0.5); // 소량 노이즈 컷
+  items.sort((a,b)=> b.sc - a.sc);
+  const out=[]; const seen=new Set();
+  for(const it of items){ if(seen.has(it.name)) continue; seen.add(it.name); out.push(it); if(out.length>=limit) break; }
+  return out;
+}
+function showSuggest(list){
+  if(!list.length){ suggestBox.classList.add('hidden'); suggestBox.innerHTML=''; return; }
+  const frag=document.createDocumentFragment();
+  list.forEach((it)=>{
+    const d=document.createElement('div');
+    d.className='s-item'; d.setAttribute('role','option'); d.tabIndex=0;
+    d.innerHTML = `<strong>${it.name}</strong> · <span class="muted">${it.nodes.size}개 노드</span>`;
+    d.addEventListener('click', ()=> { pickedArtifacts.set(it.name, {name:it.name}); renderChips(); suggestBox.classList.add('hidden'); interestInputEl.value=''; interestInputEl.focus(); });
+    d.addEventListener('keydown', e=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); d.click(); }});
+    frag.appendChild(d);
+  });
+  suggestBox.innerHTML=''; suggestBox.appendChild(frag);
+  suggestBox.classList.remove('hidden');
+}
+let typingTimer=null;
+interestInputEl.addEventListener('input', ()=>{
+  clearTimeout(typingTimer);
+  const q = interestInputEl.value.trim();
+  typingTimer = setTimeout(()=>{
+    if(q.length<1){ suggestBox.classList.add('hidden'); return; }
+    const list = searchArtifacts(q);
+    showSuggest(list);
+  }, 120);
+});
+
+document.addEventListener('click', (e)=>{
+  if(!suggestBox.contains(e.target) && e.target!==interestInputEl){ suggestBox.classList.add('hidden'); }
+});
+interestInputEl.addEventListener('keydown', (e)=>{
+  if(e.key==='ArrowDown'){
+    const first = suggestBox.querySelector('.s-item');
+    if(first){ e.preventDefault(); first.focus(); }
+  }
+});
+
+/* ================= 프리뷰 목록(스크롤형) ================= */
+function renderArtifactPreview(){
+  if(!ALL_ARTIFACTS.length){
+    artifactListEl.innerHTML = '<div class="muted"><small>유물 목록이 비어있습니다.</small></div>';
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  ALL_ARTIFACTS.slice(0, 200).forEach(a=>{
+    const d=document.createElement('div');
+    d.className='list-item'; d.tabIndex=0; d.textContent = `${a.name} · ${a.nodes.size}개 노드`;
+    d.addEventListener('click', ()=>{ pickedArtifacts.set(a.name, {name:a.name}); renderChips(); });
+    d.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); d.click(); }});
+    frag.appendChild(d);
+  });
+  artifactListEl.innerHTML=''; artifactListEl.appendChild(frag);
+}
+
+/* ================= 그래프/경로 ================= */
+function buildGraph(){
+  GRAPH.clear();
+  if(!EDGE_ROWS.length) return;
+  const sample = EDGE_ROWS[0]||{};
+  const keys = Object.keys(sample);
+  const F = pickKey(sample, K_EDGE_FROM) || keys[0];
+  const T = pickKey(sample, K_EDGE_TO)   || keys[1] || keys[0];
+  let W = pickKey(sample, K_EDGE_DIST);
+  if(!W){
+    W = keys.find(k=>/dist|거리|length|weight/i.test(k)) || keys[2] || keys[0];
+  }
+  for(const e of EDGE_ROWS){
+    const u = (e[F]||'').trim();
+    const v = (e[T]||'').trim();
+    const w = parseFloat(String(e[W]||'').toString().replace(/,/g,''));
+    if(!u || !v || !isFinite(w)) continue;
+    if(!GRAPH.has(u)) GRAPH.set(u, []);
+    if(!GRAPH.has(v)) GRAPH.set(v, []);
+    GRAPH.get(u).push({to:v, w});
+    GRAPH.get(v).push({to:u, w});
+  }
+}
+
+function shortestPath(u,v){
+  const dist=new Map(), prev=new Map(), pq=new Map();
+  for(const n of GRAPH.keys()) dist.set(n,Infinity);
+  if(!GRAPH.has(u) || !GRAPH.has(v)) return {distance:Infinity, path:[]};
+  dist.set(u,0); pq.set(u,0);
+  while(pq.size){
+    let x=null, best=Infinity;
+    for(const [k,val] of pq){ if(val<best){ best=val; x=k; } }
+    pq.delete(x);
+    if(x===v) break;
+    const dx=dist.get(x);
+    for(const {to,w} of (GRAPH.get(x)||[])){
+      const nd=dx+w;
+      if(nd<dist.get(to)){ dist.set(to,nd); prev.set(to,x); pq.set(to,nd); }
+    }
+  }
+  if(dist.get(v)===Infinity) return {distance:Infinity, path:[]};
+  const path=[]; let cur=v;
+  while(cur!==undefined){ path.push(cur); if(cur===u) break; cur = prev.get(cur); }
+  path.reverse();
+  return {distance:dist.get(v), path};
+}
+function orderWaypointsNN(waypoints){
+  const remain=new Set(waypoints), seq=[], start='P1'; let cur=start;
+  while(remain.size){
+    let best=null, bestD=Infinity;
+    for(const c of remain){ const {distance}=shortestPath(cur,c); if(distance<bestD){ best=c; bestD=distance; } }
+    if(!best) break;
+    seq.push(best); remain.delete(best); cur=best;
+  }
+  return ['P1', ...seq, 'P1'];
+}
+function materializeFullPath(ordered){
+  let total=0; const full=[];
+  for(let i=0;i<ordered.length-1;i++){
+    const {path,distance}=shortestPath(ordered[i], ordered[i+1]);
+    if(!path.length) continue;
+    if(i===0) full.push(...path); else full.push(...path.slice(1));
+    total+=distance;
+  }
+  return { fullPath: full, totalDistance: total };
+}
+
+/* ================= node_types 인덱스 만들기 ================= */
+function buildNodeAndArtifactIndexes(){
+  NODE_TO_ARTS.clear(); ART_TO_NODES.clear(); ALL_ARTIFACTS=[];
+  if(!NODE_ROWS.length) return;
+
+  // 키 자동 추론: 1열=노드, 2열=유물목록(쉼표 구분)
+  const sample = NODE_ROWS[0]||{};
+  const keys = Object.keys(sample);
+  let nodeKey = pickKey(sample, K_NODE_ID)   || keys[0];
+  let artsKey = pickKey(sample, K_NODE_ARTS) || keys[1] || keys[0];
+
+  for(const r of NODE_ROWS){
+    const node = (r[nodeKey]||'').trim(); if(!node) continue;
+    const listRaw = String(r[artsKey]||'').split(',');
+    const arts = listRaw.map(s=>s.trim()).filter(Boolean);
+    NODE_TO_ARTS.set(node, arts);
+    for(const a of arts){
+      const n = normStr(a);
+      if(!ART_TO_NODES.has(n)) ART_TO_NODES.set(n, new Set());
+      ART_TO_NODES.get(n).add(node);
+    }
+  }
+  const nameToNodes = new Map();
+  for(const [node, arts] of NODE_TO_ARTS){
+    for(const a of arts){
+      if(!nameToNodes.has(a)) nameToNodes.set(a, new Set());
+      nameToNodes.get(a).add(node);
+    }
+  }
+  ALL_ARTIFACTS = [...nameToNodes.entries()].map(([name, nodes])=>({ name, norm:normStr(name), nodes }));
+  ALL_ARTIFACTS.sort((a,b)=> a.name.localeCompare(b.name, 'ko'));
+}
+
+/* ================= 노드 선택 로직 ================= */
+function rankNodesBySelection(){
+  // 선택된 유물명들과 유사도가 높은 유물을 보유한 노드를 점수화
+  const sel = [...pickedArtifacts.keys()];
+  if(sel.length===0){ return []; }
+  const scores=new Map();
+  for(const [node, arts] of NODE_TO_ARTS){
+    let s=0;
+    for(const q of sel){
+      let localBest=0;
+      for(const a of arts){ localBest = Math.max(localBest, simScore(a, q)); }
+      s += localBest; // 노드별로 선택한 각 질의에 대해 최고 유사도 합산
+    }
+    if(s>0.5) scores.set(node, s);
+  }
+  return [...scores.entries()].sort((a,b)=> b[1]-a[1]);
+}
+
+function fillNearestNodes(baseSet, need){
+  // P1로부터 가까운 순으로 보충
+  const pool = [];
+  for(const node of NODE_TO_ARTS.keys()){
+    if(node==='P1' || baseSet.has(node)) continue;
+    const {distance} = shortestPath('P1', node);
+    if(isFinite(distance)) pool.push({node, d:distance});
+  }
+  pool.sort((a,b)=> a.d - b.d);
+  const out=[];
+  for(const it of pool){ if(out.length>=need) break; out.push(it.node); }
+  return out;
+}
+
+function pickNodesWithinRange(minNodes, maxNodes){
+  const ranked = rankNodesBySelection();
+  const chosen = new Set();
+
+  // 우선: 선택 유물과 유사한 유물을 가진 노드 위주로 선발
+  for(const [node,_s] of ranked){ if(chosen.size>=maxNodes) break; if(node!=='P1') chosen.add(node); }
+
+  // 보충: 모자라면 가까운 노드로 채우기
+  if(chosen.size < minNodes){
+    const add = fillNearestNodes(chosen, minNodes - chosen.size);
+    for(const n of add) chosen.add(n);
+  }
+
+  // 초과: 점수 낮은 순 제거
+  if(chosen.size > maxNodes){
+    const scoreMap = new Map(ranked);
+    const list = [...chosen].sort((a,b)=> (scoreMap.get(a)||0) - (scoreMap.get(b)||0));
+    while(list.length > maxNodes){ const pop=list.shift(); chosen.delete(pop); }
+  }
+
+  return { chosen:[...chosen] };
+}
+
+/* ================= 노드의 유물 선택(출력용) ================= */
+function pickArtifactsOnNodes(nodes, approxCount){
+  const sel = [...pickedArtifacts.keys()];
+  const picked=[];
+  const MAX_PER_NODE=2;
+
+  // 1) 사용자가 고른 질의어에 대해 각 노드에서 가장 비슷한 유물 매칭
+  for(const n of nodes){
+    const arts = NODE_TO_ARTS.get(n)||[];
+    for(const q of sel){
+      let best=null, bestS=0;
+      for(const a of arts){ const s=simScore(a,q); if(s>bestS){ best=a; bestS=s; } }
+      if(best && bestS>=0.55 && !picked.find(p=>p.name===best)){
+        const countInNode = picked.filter(p=>p.node===n).length;
+        if(countInNode < MAX_PER_NODE) picked.push({name:best, node:n});
+      }
+    }
+  }
+
+  // 2) 모자라면 각 노드에서 남는 유물을 상위 유사도 순으로 채움
+  if(picked.length < approxCount){
+    for(const n of nodes){
+      const arts = (NODE_TO_ARTS.get(n)||[]).slice();
+      const sorted = sel.length
+        ? arts.map(a=>({a, s: Math.max(...sel.map(q=>simScore(a,q))) }))
+              .sort((x,y)=> y.s - x.s)
+        : arts.map(a=>({a, s: 0}));
+      for(const {a} of sorted){
+        if(picked.length >= approxCount) break;
+        if(picked.find(p=>p.name===a)) continue;
+        const countInNode = picked.filter(p=>p.node===n).length;
+        if(countInNode < MAX_PER_NODE) picked.push({name:a, node:n});
+      }
+    }
+  }
+
+  // 3) 여전히 모자라면 전체에서 아무거나 추가
+  if(picked.length < approxCount){
+    for(const [n, arts] of NODE_TO_ARTS){
+      if(picked.length >= approxCount) break;
+      for(const a of arts){
+        if(picked.find(p=>p.name===a)) continue;
+        picked.push({name:a, node:n});
+        if(picked.length >= approxCount) break;
+      }
+    }
+  }
+
+  return picked;
+}
+
+/* ================= 렌더링 ================= */
+function renderPickedList(rows){
+  const ul=document.getElementById('pickedList'); ul.innerHTML='';
+  rows.forEach((r,i)=>{
+    const li=document.createElement('li');
+    li.innerHTML = `<strong>${i+1}. ${r.name}</strong> · <span class="muted">${r.node}</span>`;
+    ul.appendChild(li);
+  });
+}
+function renderRouteVis(nodes){
+  const vis=document.getElementById('routeVis'); vis.innerHTML='';
+  nodes.forEach((n,i)=>{
+    const wrap=document.createElement('div');
+    wrap.style.display='flex'; wrap.style.flexDirection='column'; wrap.style.alignItems='center';
+    const dot=document.createElement('div'); dot.className='node-dot'; dot.textContent=(i===0||i===nodes.length-1)?'P':i;
+    const lab=document.createElement('div'); lab.className='node-label'; lab.textContent=n;
+    dot.title=n; dot.onclick=()=>alert(`노드: ${n}`);
+    wrap.appendChild(dot); wrap.appendChild(lab);
+    vis.appendChild(wrap);
+    if(i<nodes.length-1){ const dash=document.createElement('div'); dash.className='dash'; vis.appendChild(dash); }
+  });
+}
+
+/* ================= 파이프라인 ================= */
+function getStyleMinutes(){ const v=document.querySelector('input[name="style"]:checked')?.value || '1.5'; return parseFloat(v); }
+function getNodeRange(){ let min = parseInt(document.getElementById('minNodes').value||'1',10); let max = parseInt(document.getElementById('maxNodes').value||'1',10); if(!isFinite(min)||min<1) min=1; if(!isFinite(max)||max<min) max=min; return {min,max}; }
+
+function materializeAndRender(onlyWaypoints, pickedArtifactsList, perMinutes){
+  // 경로
+  buildGraph();
+  const ordered = orderWaypointsNN(onlyWaypoints);
+  const { fullPath, totalDistance } = materializeFullPath(ordered);
+
+  // 시간: 이동 + 관람(유물 수 × 분/노드)
+  const walkMinutes = totalDistance / (speed_mps * 60);
+  // 관람 시간은 '경유 노드 수 × 분/노드' 기준
+  const viewMinutes = perMinutes * onlyWaypoints.length;
+  const totalMinutes = walkMinutes + viewMinutes;
+
+  document.getElementById('summaryText').innerHTML =
+    `경유 노드: <strong>${onlyWaypoints.length}</strong> (P1 포함 시 ${fullPath.length} 경로 노드)<br>
+     이동거리: <strong>${totalDistance.toFixed(0)} m</strong> (보행 ${walkMinutes.toFixed(1)}분) + 관람 ${viewMinutes.toFixed(1)}분 (노드 ${onlyWaypoints.length}개 × ${perMinutes}분/노드)
+     → <strong>예상 총 ${Math.round(totalMinutes)}분</strong>`;
+
+  renderPickedList(pickedArtifactsList);
+  renderRouteVis(fullPath);
+  document.getElementById('routeStats').innerHTML = `<small>출발·도착: P1 · 전체 경로 노드 수: ${fullPath.length}</small>`;
+
+  const box=document.getElementById('resultBox');
+  box.style.display='block';
+  box.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+async function run(){
+  try{
+    document.getElementById('resultBox').style.display='none';
+    const {min,max} = getNodeRange();
+    const perMinutes = getStyleMinutes();
+
+    // 노드 선택(범위 만족)
+    const { chosen } = pickNodesWithinRange(min, max);
+    const onlyWaypoints = chosen; // P1 제외 경유 노드
+
+    if(onlyWaypoints.length===0){
+      alert('방문할 노드를 찾지 못했습니다. 선택한 유물명과 node_types.csv의 2열(유물 목록)을 확인해 주세요.');
+      return;
+    }
+
+    // 노드에 배치할 유물 선택(관람 수는 “노드 범위에 준해” 자동 결정: 노드당 1~2개씩)
+    const approxCount = Math.max(min, Math.min(max*2, 8));
+    const pickedList = pickArtifactsOnNodes(onlyWaypoints, approxCount);
+
+    materializeAndRender(onlyWaypoints, pickedList, perMinutes);
+  }catch(err){ console.error(err); alert('경로 추천 중 오류가 발생했습니다: ' + (err?.message||err)); }
+}
+
+/* ================= 초기화/이벤트 ================= */
+function getTime(){ return Date.now?.() ?? new Date().getTime(); }
+
+document.getElementById('runBtn').addEventListener('click', run);
+
+document.getElementById('loadFilesBtn').addEventListener('click', async ()=>{
+  try{
+    if(!fileN.files[0] || !fileD.files[0]){ alert('두 파일(node_types, distances)을 모두 선택해 주세요.'); return; }
+    const [nText,dText] = await Promise.all([ readFileAsText(fileN.files[0]), readFileAsText(fileD.files[0]) ]);
+    const np=parseCsv(nText); NODE_ROWS=np.rows;
+    const dp=parseCsv(dText); EDGE_ROWS=dp.rows;
+    buildNodeAndArtifactIndexes(); buildGraph(); renderArtifactPreview();
+    updateLoadStatus('upload');
+  }catch(err){ alert('파일 로드 실패: ' + (err?.message||err)); updateLoadStatus('upload-error'); }
+});
+
+async function loadByFetch(){
+  const [n,d] = await Promise.all([ tryFetchCsv('node_types.csv'), tryFetchCsv('distances.csv') ]);
+  const np=parseCsv(n); NODE_ROWS=np.rows;
+  const dp=parseCsv(d); EDGE_ROWS=dp.rows;
+}
+
+async function init(){
+  try{
+    await loadByFetch();
+    buildNodeAndArtifactIndexes();
+    buildGraph();
+    renderArtifactPreview();
+    updateLoadStatus('fetch');
+  }catch(e){
+    artifactListEl.innerHTML = '<div class="muted"><small>네트워크로 CSV를 불러오지 못했습니다. 아래에서 두 CSV 파일을 직접 선택해 주세요.</small></div>';
+    fileFallback.classList.remove('hidden');
+    updateLoadStatus('fetch-error');
+  }
+}
+
+window.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

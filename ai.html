@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>AI 대화 — 맞춤 경로</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;900&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="style.css" />
+<style>
+  /* ===== 페이지 전용 보강 (기존 톤 유지) ===== */
+  .chat-page{ padding-bottom: env(safe-area-inset-bottom); }
+  .chat-wrap{
+    display:flex; flex-direction:column; gap:12px;
+    min-height: calc(100dvh - var(--header-h) - var(--gap)*2);
+  }
+  .chat {
+    border:1px solid var(--line); border-radius:16px; background:#fff;
+    padding:12px; overflow:auto; flex:1 1 auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-padding-bottom: 80px;
+  }
+  .msg{ display:flex; gap:10px; margin:10px 0; }
+  .msg .bubble{
+    max-width: 78%; padding:10px 12px; border-radius:14px; line-height:1.6; font-size:15px;
+    border:1px solid var(--line);
+    word-break: break-word; white-space: pre-wrap; background:#f9fafb;
+  }
+  .msg.user{ justify-content:flex-end; }
+  .msg.user .bubble{ background:#f5f9ff; }
+
+  .composer-wrap{
+    position: sticky; bottom: 0; left: 0; right: 0;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 4px);
+    background: linear-gradient(to top, #ffffff 70%, rgba(255,255,255,0));
+  }
+  .composer{
+    display:flex; gap:8px; align-items:center;
+    background:#fff; padding:10px; border:1px solid var(--line); border-radius:12px;
+  }
+  .composer .input{ height:44px; }
+  .typing{ font-size:13px; color:var(--muted); margin-top:-6px; padding-left:4px; display:none; }
+
+  .bubble strong{ font-weight:900; }
+  .bubble em{ font-style:italic; }
+  .bubble code{
+    font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size: 0.92em; padding: 0.1em 0.35em; border-radius: 6px;
+    background: #f3f4f6; border: 1px solid var(--line);
+  }
+  .bubble a{ color:#2563eb; text-decoration:underline; word-break:break-all; }
+  .bubble ul{ padding-left: 1.2em; margin: .4em 0; }
+  .bubble li{ margin: .25em 0; }
+
+  .input:focus-visible{ outline: 2px solid #c7d2fe; outline-offset: 2px; }
+
+  @media (max-width:480px){
+    .msg .bubble{ max-width: 85%; }
+  }
+</style>
+</head>
+<body>
+  <header class="header header--sub">
+    <a class="back" href="qa.html" aria-label="뒤로">←</a>
+    <h1>AI와 대화하기</h1>
+  </header>
+
+  <main class="container chat-page">
+    <section class="chat-wrap">
+      <div class="chat" id="chat" aria-live="polite">
+        <div class="msg bot">
+          <div class="bubble">AI와 대화하여 나만의 맞춤 동선을 찾아보세요!
+
+EX)
+ - 국립 부여 박물관에는 어떤 유물들이 있어?
+ - 백제 금동 대향로와 함께 볼 만한 유물들
+ - 초등학생과 박물관을 재미있게 즐기려면?</div>
+        </div>
+      </div>
+
+      <div class="typing" id="typing">AI가 답변을 작성 중입니다…</div>
+
+      <div class="composer-wrap">
+        <div class="composer">
+          <input id="userInput" class="input" placeholder="메시지를 입력하세요 (Enter 전송, Shift+Enter 줄바꿈)" />
+          <button class="btn" id="summarizeBtn" aria-label="대화 요약 및 경로 추천">대화 요약 및 경로 추천</button>
+          <button class="btn btn-solid" id="sendBtn" aria-label="전송">전송</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+<script>
+/** ====== 설정 ====== */
+const MODEL_NAME = "gemini-2.5-flash";
+const API_KEY = "AIzaSyA5-ytyoOqnZ7OiO9nwp9Lmj3am3isvl4I";
+const ENDPOINT_URL = (model) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`;
+
+/** ====== PRIMER (상시 주입) ====== */
+const BASE_PRIMER = `
+너는 국립 부여 박물관의 주요 관리자야. 자기 소개는 하지 마
+너는 유물 정보들을 원래 알고 있고, artifacts.csv 파일에서 이 정보를 습득하였다는 말은 하지 마
+이 세션에서 사용할 'artifacts.csv'는 **국립부여박물관이 소장/전시하는 유물 목록의 근거 데이터셋(실제 보유 유물의 수는 이보다 많지만 이게 대부분)**입니다.
+- 모든 추천·설명은 이 CSV에 등재된 유물 범위 내에서만 하세요. (없는 유물명/사실은 만들지 말 것)
+- 사용자의 시간·관심사·동반자 정보를 바탕으로 관람 '개수 범위(최소~최대)'를 먼저 제안하세요.
+- CSV에 충분한 정보가 없거나 조건이 모호하면, **추가로 필요한 질문 2~4개**를 먼저 하세요.
+- 답변은 존댓말, 간결하고 정확하게. 과장·불확실한 단정 금지.
+`;
+
+/** ====== DOM ====== */
+const chatEl = document.getElementById('chat');
+const inputEl = document.getElementById('userInput');
+const sendBtn = document.getElementById('sendBtn');
+const summarizeBtn = document.getElementById('summarizeBtn');
+const typingEl = document.getElementById('typing');
+
+/** ====== 상태 ====== */
+let historyMsgs = [];
+let csvTextCache = null;
+let artifactsIndex = '';     // 모델에 주입할 경량 인덱스
+let artifactsRows = [];      // 파싱된 객체 배열
+let artifactsMetaText = '';  // "총 N건, 컬럼: a,b,c" 같은 메타 문자열
+
+/** ====== 유틸: 안전 이스케이프 → 마크다운풍 변환 ====== */
+function escapeHtml(s){
+  return s
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function renderLists(s){
+  const lines = s.split('\n');
+  let out = [], buf = [];
+  const bulletRe = /^\s*([*-])\s+/;
+  const flush = () => {
+    if (buf.length){
+      out.push('<ul>' + buf.map(li => '<li>' + li.replace(bulletRe, '') + '</li>').join('') + '</ul>');
+      buf = [];
+    }
+  };
+  for (let line of lines){
+    if (bulletRe.test(line)) buf.push(line.trim());
+    else { flush(); out.push(line); }
+  }
+  flush();
+  return out.join('\n');
+}
+function renderRich(raw){
+  let s = escapeHtml(String(raw||''));
+  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_,t,u)=>`<a href="${u}" target="_blank" rel="noopener">${t}</a>`);
+  s = s.replace(/(https?:\/\/[^\s)]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  s = renderLists(s);
+  s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+  s = s.replace(/\n/g,'<br>');
+  return s;
+}
+
+/** ====== 메시지 출력 ====== */
+function appendMsg(role, text){
+  const wrap = document.createElement('div');
+  wrap.className = 'msg ' + (role === 'user' ? 'user' : 'bot');
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.innerHTML = renderRich(text);
+  wrap.appendChild(bubble);
+  chatEl.appendChild(wrap);
+  requestAnimationFrame(() => wrap.scrollIntoView({ behavior:"smooth", block:"end" }));
+}
+function setTyping(on){ typingEl.style.display = on ? 'block' : 'none'; }
+function uiLock(on){ inputEl.disabled = on; sendBtn.disabled = on; summarizeBtn.disabled = on; }
+
+/** ====== CSV 로더 & 경량 인덱스 생성 ====== */
+async function loadCsvText(){
+  if (csvTextCache) return csvTextCache;
+  const res = await fetch('artifacts.csv', { cache: 'no-cache' });
+  if (!res.ok) throw new Error('artifacts.csv 를 불러올 수 없습니다.');
+  const txt = await res.text();
+  csvTextCache = txt;
+  return txt;
+}
+function splitCsvLine(line){
+  const out=[]; let cur='', inQ=false;
+  for (let i=0;i<line.length;i++){
+    const ch=line[i];
+    if (ch === '"'){
+      if (inQ && line[i+1] === '"'){ cur+='"'; i++; }
+      else inQ = !inQ;
+    }else if (ch === ',' && !inQ){
+      out.push(cur); cur='';
+    }else{
+      cur+=ch;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+function parseCsv(text){
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  if (!lines.length) return [];
+  const headers = splitCsvLine(lines[0]).map(h=>h.trim());
+  const rows = [];
+  for (let i=1;i<lines.length;i++){
+    const cols = splitCsvLine(lines[i]);
+    const obj = {};
+    headers.forEach((h,idx)=> obj[h] = (cols[idx]||'').trim());
+    rows.push(obj);
+  }
+  // 메타 문자열: 총 n건, 컬럼명
+  artifactsMetaText = `artifacts.csv 메타: 총 ${rows.length}건, 컬럼 = ${headers.join(', ')}`;
+  return rows;
+}
+// 모델에 주입할 경량 인덱스: "유물명 | 시대 | 태그 | 한줄요약"
+function buildArtifactsIndex(rows){
+  const nameKeys = ['title','name','artifact','유물','유물명'];
+  const eraKeys  = ['era','period','시대'];
+  const tagKeys  = ['tags','tag','키워드','분류'];
+  const briefKeys= ['summary','desc','description','요약','설명'];
+  const pick = (obj, keys)=> keys.find(k=>k in obj) || null;
+
+  const lines = [];
+  for (const r of rows){
+    const kName  = pick(r, nameKeys);
+    const kEra   = pick(r, eraKeys);
+    const kTags  = pick(r, tagKeys);
+    const kBrief = pick(r, briefKeys);
+
+    const name  = (kName ? r[kName] : '').trim();
+    if (!name) continue;
+
+    const era   = (kEra ? r[kEra] : '').trim();
+    const tags  = (kTags ? r[kTags] : '').trim();
+    let brief   = (kBrief ? r[kBrief] : '').trim();
+    if (brief.length > 120) brief = brief.slice(0,117) + '…';
+
+    lines.push(`- ${name}${era?` | ${era}`:''}${tags?` | ${tags}`:''}${brief?` | ${brief}`:''}`);
+  }
+  const MAX_CHARS = 18000;
+  const joined = lines.join('\n');
+  return joined.length > MAX_CHARS ? joined.slice(0, MAX_CHARS) : joined;
+}
+
+async function primeArtifacts(){
+  try{
+    const csv = await loadCsvText();
+    artifactsRows = parseCsv(csv);
+    artifactsIndex = buildArtifactsIndex(artifactsRows);
+    }catch(e){
+    appendMsg('model', '유물 데이터(artifacts.csv)를 불러오지 못했습니다. 같은 폴더에 있는지 확인해 주세요. 그래도 대화는 진행 가능합니다.');
+  }
+}
+
+/** ====== 공통: 호출 페이로드 구성 (항상 소장품 목록 전제 포함) ====== */
+function baseContextParts(){
+  const parts = [
+    { role:'user', parts:[{ text: BASE_PRIMER.trim() }] }
+  ];
+  if (artifactsMetaText){
+    parts.push({ role:'user', parts:[{ text: artifactsMetaText }] });
+  }
+  if (artifactsIndex){
+    parts.push({ role:'user', parts:[{ text:
+      '--- 국립부여박물관 소장 유물 인덱스(요약) 시작 ---\n'
+      + artifactsIndex +
+      '\n--- 인덱스 끝 ---'
+    }]});
+  }
+  return parts;
+}
+
+/** ====== Gemini 호출 ====== */
+async function callGeminiWithContents(contents){
+  const body = {
+    contents,
+    generationConfig: { temperature:0.6, topK:40, topP:0.9, maxOutputTokens:800 }
+  };
+  const res = await fetch(ENDPOINT_URL(MODEL_NAME), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+  });
+  if(!res.ok){
+    const t = await res.text();
+    throw new Error('API 오류: ' + t);
+  }
+  const data = await res.json();
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text || '응답이 비어있습니다.';
+}
+async function callGemini(userText){
+  const N = 6;
+  const recent = historyMsgs.slice(-N);
+  const contents = [
+    ...baseContextParts(),
+    ...recent.map(m => ({ role: m.role === 'user' ? 'user' : 'model', parts:[{ text: m.text }] })),
+    { role:'user', parts:[{ text: userText }] }
+  ];
+  return callGeminiWithContents(contents);
+}
+
+/** ====== 요약/추천 ====== */
+const SUMMARY_PRIMER = `
+[요약·추천 형식]
+1) 권장 관람 개수 범위: 최소 X개 이상, 최대 Y개 이하 (한 줄 근거)
+2) 추천 유물(3~8개, CSV에 있는 항목만): "유물명 — 이유 한 줄"
+3) 정보 부족 시: 추천보다 "추가 질문 2~4개"를 먼저 제시
+※ 모든 추천은 '국립부여박물관 소장 유물(artifacts.csv)'에서만 선택.
+`;
+
+async function summarizeAndRecommend(){
+  try{
+    setTyping(true); uiLock(true);
+
+    const userCount = historyMsgs.filter(m => m.role === 'user').length;
+    if (userCount === 0){
+      appendMsg('model',
+        '관람 시간(분), 사진 위주 여부, 선호 주제(왕실/종교/생활사 등), 동반자(아이/어르신) 여부를 알려주시면 범위와 후보를 정밀하게 제안드리겠습니다.');
+      return;
+    }
+
+    const N = 20;
+    const recent = historyMsgs.slice(-N);
+    const convo = recent.map(m => (m.role === 'user' ? '사용자: ' : 'AI: ') + m.text).join('\n');
+
+    const contents = [
+      ...baseContextParts(),
+      { role:'user', parts:[{ text: '--- 최근 대화 로그 시작 ---\n' + convo + '\n--- 대화 로그 끝 ---' }] },
+      { role:'user', parts:[{ text: SUMMARY_PRIMER.trim() }] }
+    ];
+
+    const reply = await callGeminiWithContents(contents);
+    appendMsg('model', reply);
+    historyMsgs.push({ role:'model', text: reply });
+  }catch(err){
+    appendMsg('model', '요약/추천 처리 중 문제가 발생했습니다.\n' + (err?.message||err));
+  }finally{
+    setTyping(false); uiLock(false); inputEl.focus();
+  }
+}
+
+/** ====== 전송 핸들러 ====== */
+async function send(){
+  const text = inputEl.value.trim();
+  if(!text) return;
+
+  appendMsg('user', text);
+  historyMsgs.push({ role:'user', text });
+  inputEl.value = '';
+
+  uiLock(true); setTyping(true);
+  try{
+    const reply = await callGemini(text);
+    appendMsg('model', reply);
+    historyMsgs.push({ role:'model', text: reply });
+  }catch(err){
+    appendMsg('model', '죄송합니다. 처리 중 문제가 발생했습니다.\n' + (err?.message||err));
+  }finally{
+    setTyping(false); uiLock(false); inputEl.focus();
+  }
+}
+sendBtn.addEventListener('click', send);
+inputEl.addEventListener('keydown', e=>{
+  if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); }
+});
+summarizeBtn.addEventListener('click', summarizeAndRecommend);
+
+inputEl.addEventListener('focus', () => {
+  setTimeout(() => { chatEl.scrollTop = chatEl.scrollHeight; }, 300);
+});
+window.addEventListener('resize', () => { chatEl.scrollTop = chatEl.scrollHeight; });
+
+window.addEventListener('DOMContentLoaded', ()=> {
+  inputEl.focus({ preventScroll: true });
+  primeArtifacts(); // CSV 선학습
+});
+</script>
+</body>
+</html>
